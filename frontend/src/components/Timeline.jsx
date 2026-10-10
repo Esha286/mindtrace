@@ -7,7 +7,7 @@ const COLORS = [
   'bg-violet-500',
 ]
 
-export default function Timeline({ segments, currentTime, duration, onSeek }) {
+export default function Timeline({ segments, currentTime, duration, onSeek, flagged = new Set() }) {
   if (!segments.length || !duration) {
     return (
       <div className="h-16 rounded-xl border-2 border-dashed border-slate-300
@@ -33,7 +33,7 @@ export default function Timeline({ segments, currentTime, duration, onSeek }) {
                         ${isActive ? 'ring-4 ring-slate-800 scale-y-110' : 'opacity-70 hover:opacity-100'}`}
             title={seg.title}
           >
-            {seg.title}
+            {flagged.has(seg.id) ? '🚩 ' : ''}{seg.title}
           </button>
         )
       })}

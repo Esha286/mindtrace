@@ -35,6 +35,7 @@ export default function PlayerPage() {
   const [duration, setDuration] = useState(0)
   const [segments, setSegments] = useState([])
   const [quizSeg, setQuizSeg] = useState(null) // segment being quizzed
+  const [flagged, setFlagged] = useState(new Set()) // A: segment ids marked unresolved
 
   function handleLoadedMetadata() {
     const d = videoRef.current.duration
@@ -82,6 +83,23 @@ export default function PlayerPage() {
     }
   }
 
+  // B: current topic and unresolved toggle
+  const currentSeg = segments.find(
+    (s) => currentTime >= s.start_time && currentTime < s.end_time
+  )
+
+  function toggleUnresolved(seg) {
+    const next = new Set(flagged)
+    if (next.has(seg.id)) {
+      next.delete(seg.id)
+    } else {
+      next.add(seg.id)
+      // Later: POST /flags with { segment_id: seg.id }
+      console.log('Unresolved:', seg.id, seg.title)
+    }
+    setFlagged(next)
+  }
+
   return (
     <main className="max-w-4xl mx-auto mt-8 px-4 pb-12">
       <Link to="/" className="text-indigo-600 hover:underline text-sm">
@@ -110,13 +128,37 @@ export default function PlayerPage() {
 
       <section className="mt-6">
         <h3 className="font-semibold text-slate-700 mb-2">Topic timeline</h3>
+        {/* C: flagged is passed to the Timeline */}
         <Timeline
           segments={segments}
           currentTime={currentTime}
           duration={duration}
           onSeek={handleSeek}
+          flagged={flagged}
         />
       </section>
+
+      {/* D: current topic and unresolved button */}
+      {currentSeg && (
+        <section className="mt-6 flex items-center justify-between bg-white rounded-xl shadow-sm p-4">
+          <div>
+            <p className="text-xs text-slate-500">Current topic</p>
+            <p className="font-semibold text-slate-800">{currentSeg.title}</p>
+          </div>
+          <button
+            onClick={() => toggleUnresolved(currentSeg)}
+            className={`px-5 py-2 rounded-lg font-semibold transition ${
+              flagged.has(currentSeg.id)
+                ? 'bg-rose-600 text-white hover:bg-rose-700'
+                : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+            }`}
+          >
+            {flagged.has(currentSeg.id)
+              ? '🚩 Marked unresolved (click to undo)'
+              : 'Mark as unresolved'}
+          </button>
+        </section>
+      )}
 
       {quizSeg && (
         <QuizModal
