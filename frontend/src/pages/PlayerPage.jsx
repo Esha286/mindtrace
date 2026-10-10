@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import Timeline from '../components/Timeline'
+import QuizModal from '../components/QuizModal'
 
-// Fake topics for now. Later these come from Eman's GET /recordings/{id}/segments.
-// Times are in seconds as a fraction of the video, so they work for any file.
+// Fake topics. Later: Eman's GET /recordings/{id}/segments
 function makeFakeSegments(duration) {
   const titles = ['Introduction', 'Main Concept', 'Example', 'Summary']
   const part = duration / titles.length
@@ -15,15 +15,26 @@ function makeFakeSegments(duration) {
   }))
 }
 
+// Fake question. Later: Eman's GET /segments/{id}/checkpoint
+function makeFakeCheckpoint(seg) {
+  return {
+    question: `What was the main idea of "${seg.title}"?`,
+    options: ['Option A', 'Option B', 'Option C', 'Option D'],
+    correct_index: 1,
+  }
+}
+
 export default function PlayerPage() {
   const { state } = useLocation()
   const videoUrl = state?.videoUrl
   const name = state?.name
 
   const videoRef = useRef(null)
+  const askedRef = useRef(new Set()) // segment ids already quizzed
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [segments, setSegments] = useState([])
+  const [quizSeg, setQuizSeg] = useState(null) // segment being quizzed
 
   function handleLoadedMetadata() {
     const d = videoRef.current.duration
@@ -31,9 +42,44 @@ export default function PlayerPage() {
     setSegments(makeFakeSegments(d))
   }
 
+  function showQuiz(seg) {
+    askedRef.current.add(seg.id)
+    videoRef.current.pause()
+    setQuizSeg(seg)
+  }
+
+  function handleTimeUpdate() {
+    const v = videoRef.current
+    const t = v.currentTime
+    setCurrentTime(t)
+    if (quizSeg || v.paused) return
+
+    const seg = segments.find((s) => t >= s.start_time && t < s.end_time)
+    if (seg && seg.end_time - t < 0.5 && !askedRef.current.has(seg.id)) {
+      showQuiz(seg)
+    }
+  }
+
+  function handleEnded() {
+    // Safety net: quiz the last topic if the video ended first
+    const last = segments[segments.length - 1]
+    if (last && !askedRef.current.has(last.id)) showQuiz(last)
+  }
+
   function handleSeek(time) {
     videoRef.current.currentTime = time
     videoRef.current.play()
+  }
+
+  function handleContinue(result) {
+    // Later: POST /responses with { segment_id, selected, isCorrect }
+    console.log('Answer:', quizSeg.id, result)
+    const seg = quizSeg
+    setQuizSeg(null)
+    if (seg.end_time < duration - 0.5) {
+      videoRef.current.currentTime = seg.end_time + 0.1
+      videoRef.current.play()
+    }
   }
 
   return (
@@ -52,7 +98,8 @@ export default function PlayerPage() {
           src={videoUrl}
           controls
           onLoadedMetadata={handleLoadedMetadata}
-          onTimeUpdate={() => setCurrentTime(videoRef.current.currentTime)}
+          onTimeUpdate={handleTimeUpdate}
+          onEnded={handleEnded}
           className="w-full rounded-xl bg-black"
         />
       ) : (
@@ -70,6 +117,14 @@ export default function PlayerPage() {
           onSeek={handleSeek}
         />
       </section>
+
+      {quizSeg && (
+        <QuizModal
+          topic={quizSeg.title}
+          checkpoint={makeFakeCheckpoint(quizSeg)}
+          onContinue={handleContinue}
+        />
+      )}
     </main>
   )
 }
