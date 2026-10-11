@@ -3,4 +3,4 @@ venv/
 uploads/
 *.db
 __pycache__/
-node_modules/
+node_modules/dist/
