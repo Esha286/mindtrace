@@ -1,9 +1,6 @@
-venv/
-.env
-uploads/
-*.db
-__pycache__/
-node_modules/dist/
 node_modules/
+dist/
 .env
 venv/
+__pycache__/
+uploads/
