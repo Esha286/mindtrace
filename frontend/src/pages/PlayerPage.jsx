@@ -101,7 +101,7 @@ export default function PlayerPage() {
   }
 
   return (
-    <main className="max-w-4xl mx-auto mt-8 px-4 pb-12">
+    <main className="max-w-3xl mx-auto mt-8 px-4 pb-12">
       <Link to="/" className="text-indigo-600 hover:underline text-sm">
         &larr; Upload another file
       </Link>
@@ -118,7 +118,7 @@ export default function PlayerPage() {
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
           onEnded={handleEnded}
-          className="w-full rounded-xl bg-black"
+          className="w-full max-h-[50vh] rounded-xl bg-black"
         />
       ) : (
         <div className="w-full h-64 rounded-xl bg-slate-300 flex items-center justify-center text-slate-600">
