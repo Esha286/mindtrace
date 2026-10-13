@@ -2,25 +2,14 @@ import { useRef, useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import Timeline from '../components/Timeline'
 import QuizModal from '../components/QuizModal'
+import { sendAnswer, sendFlag, sendReplay } from '../api'
 
-// Fake topics. Later: Eman's GET /recordings/{id}/segments
-function makeFakeSegments(duration) {
-  const titles = ['Introduction', 'Main Concept', 'Example', 'Summary']
-  const part = duration / titles.length
-  return titles.map((title, i) => ({
-    id: i + 1,
-    title,
-    start_time: i * part,
-    end_time: (i + 1) * part,
-  }))
-}
-
-// Fake question. Later: Eman's GET /segments/{id}/checkpoint
-function makeFakeCheckpoint(seg) {
+// Convert Eman's segment into the shape QuizModal expects
+function toCheckpoint(seg) {
   return {
-    question: `What was the main idea of "${seg.title}"?`,
-    options: ['Option A', 'Option B', 'Option C', 'Option D'],
-    correct_index: 1,
+    question: seg.question,
+    options: seg.options,
+    correct_index: 'ABCD'.indexOf(String(seg.correct_answer).trim().toUpperCase()),
   }
 }
 
@@ -28,19 +17,19 @@ export default function PlayerPage() {
   const { state } = useLocation()
   const videoUrl = state?.videoUrl
   const name = state?.name
+  const segments = state?.segments || []
 
   const videoRef = useRef(null)
-  const askedRef = useRef(new Set()) // segment ids already quizzed
+  const askedRef = useRef(new Set())
+  const watchedRef = useRef(new Set())
+  const lastTimeRef = useRef(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [segments, setSegments] = useState([])
-  const [quizSeg, setQuizSeg] = useState(null) // segment being quizzed
-  const [flagged, setFlagged] = useState(new Set()) // A: segment ids marked unresolved
+  const [quizSeg, setQuizSeg] = useState(null)
+  const [flagged, setFlagged] = useState(new Set())
 
   function handleLoadedMetadata() {
-    const d = videoRef.current.duration
-    setDuration(d)
-    setSegments(makeFakeSegments(d))
+    setDuration(videoRef.current.duration)
   }
 
   function showQuiz(seg) {
@@ -53,16 +42,27 @@ export default function PlayerPage() {
     const v = videoRef.current
     const t = v.currentTime
     setCurrentTime(t)
-    if (quizSeg || v.paused) return
+    lastTimeRef.current = t
 
     const seg = segments.find((s) => t >= s.start_time && t < s.end_time)
+    if (seg && !v.paused) watchedRef.current.add(seg.id)
+
+    if (quizSeg || v.paused) return
     if (seg && seg.end_time - t < 0.5 && !askedRef.current.has(seg.id)) {
       showQuiz(seg)
     }
   }
 
+  function handleSeeking() {
+    const newTime = videoRef.current.currentTime
+    if (newTime >= lastTimeRef.current - 1) return
+    const seg = segments.find((s) => newTime >= s.start_time && newTime < s.end_time)
+    if (seg && watchedRef.current.has(seg.id)) {
+      sendReplay(seg.id).catch((e) => console.error('Replay failed', e))
+    }
+  }
+
   function handleEnded() {
-    // Safety net: quiz the last topic if the video ended first
     const last = segments[segments.length - 1]
     if (last && !askedRef.current.has(last.id)) showQuiz(last)
   }
@@ -73,9 +73,11 @@ export default function PlayerPage() {
   }
 
   function handleContinue(result) {
-    // Later: POST /responses with { segment_id, selected, isCorrect }
-    console.log('Answer:', quizSeg.id, result)
     const seg = quizSeg
+    const letter = 'ABCD'[result.selected]
+    sendAnswer(seg.id, letter, result.isCorrect).catch((e) =>
+      console.error('Answer failed', e)
+    )
     setQuizSeg(null)
     if (seg.end_time < duration - 0.5) {
       videoRef.current.currentTime = seg.end_time + 0.1
@@ -83,7 +85,6 @@ export default function PlayerPage() {
     }
   }
 
-  // B: current topic and unresolved toggle
   const currentSeg = segments.find(
     (s) => currentTime >= s.start_time && currentTime < s.end_time
   )
@@ -94,8 +95,7 @@ export default function PlayerPage() {
       next.delete(seg.id)
     } else {
       next.add(seg.id)
-      // Later: POST /flags with { segment_id: seg.id }
-      console.log('Unresolved:', seg.id, seg.title)
+      sendFlag(seg.id).catch((e) => console.error('Flag failed', e))
     }
     setFlagged(next)
   }
@@ -117,6 +117,7 @@ export default function PlayerPage() {
           controls
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
+          onSeeking={handleSeeking}
           onEnded={handleEnded}
           className="w-full max-h-[50vh] rounded-xl bg-black"
         />
@@ -128,7 +129,6 @@ export default function PlayerPage() {
 
       <section className="mt-6">
         <h3 className="font-semibold text-slate-700 mb-2">Topic timeline</h3>
-        {/* C: flagged is passed to the Timeline */}
         <Timeline
           segments={segments}
           currentTime={currentTime}
@@ -138,7 +138,6 @@ export default function PlayerPage() {
         />
       </section>
 
-      {/* D: current topic and unresolved button */}
       {currentSeg && (
         <section className="mt-6 flex items-center justify-between bg-white rounded-xl shadow-sm p-4">
           <div>
@@ -163,7 +162,7 @@ export default function PlayerPage() {
       {quizSeg && (
         <QuizModal
           topic={quizSeg.title}
-          checkpoint={makeFakeCheckpoint(quizSeg)}
+          checkpoint={toCheckpoint(quizSeg)}
           onContinue={handleContinue}
         />
       )}

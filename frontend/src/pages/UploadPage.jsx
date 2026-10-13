@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { uploadFile, transcribe, generate, getSegments } from '../api'
 
 export default function UploadPage() {
   const [file, setFile] = useState(null)
   const [dragging, setDragging] = useState(false)
+  const [status, setStatus] = useState('')
   const navigate = useNavigate()
 
   function handleDrop(e) {
@@ -13,12 +15,34 @@ export default function UploadPage() {
     if (dropped) setFile(dropped)
   }
 
-  function handleUpload() {
-    if (!file) return
-    // Fake for now. Later this calls POST /upload on the backend.
-    const url = URL.createObjectURL(file)
-    navigate('/player', { state: { videoUrl: url, name: file.name } })
+ async function handleUpload() {
+  if (!file) return
+  try {
+    setStatus('Uploading...')
+    const up = await uploadFile(file)
+    const id = up.id ?? up.recording_id
+
+    setStatus('Processing... transcribing (this can take a minute)')
+    await transcribe(id)
+
+    setStatus('Processing... finding topics and questions')
+    await generate(id)
+
+    const segs = await getSegments(id)
+
+    navigate('/player', {
+      state: {
+        videoUrl: URL.createObjectURL(file),
+        name: file.name,
+        recordingId: id,
+        segments: segs,
+      },
+    })
+  } catch (err) {
+    console.error(err)
+    setStatus('Error: ' + err.message)
   }
+}
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-12">
@@ -63,6 +87,8 @@ export default function UploadPage() {
             Upload and start
           </button>
         </div>
+
+        {status && <p className="mt-4 text-slate-600">{status}</p>}
       </div>
 
       <div className="grid sm:grid-cols-3 gap-4 mt-10 text-center">
@@ -72,7 +98,7 @@ export default function UploadPage() {
           ['3. Quiz', 'Answer a question after each topic.'],
         ].map(([title, text]) => (
           <div key={title} className="bg-white rounded-xl shadow-sm p-5">
-            <h3 className="font-semibold text-indigo-600 mb-1">{title}</h3>
+            <h3 className="font-semibold text-slate-700 mb-1">{title}</h3>
             <p className="text-sm text-slate-500">{text}</p>
           </div>
         ))}
